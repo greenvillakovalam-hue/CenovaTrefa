@@ -25,23 +25,42 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 // Fix Leaflet icon issue
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
 // @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
 import listingsData from './data/listings.json';
 
-import { Property } from './types/property';
-
-type Listing = Property;
+// --- Types ---
+interface Listing {
+  id: string;
+  title: string;
+  locality: string;
+  m2_size: number;
+  type: string;
+  price_czk: number;
+  coordinates: { lat: number; lng: number };
+  original_url: string;
+  specs: {
+    stavi: string;
+    vlastnictvi: string;
+    podlazi: string;
+    energeticka_narocnost: string;
+    vytah: string;
+    parkovani?: string;
+    sklep?: string;
+    balkon?: string;
+    terasa?: string;
+    zahrada?: string;
+    garaz?: string;
+  };
+  image_urls: string[];
+  description: string;
+}
 
 type GameState = 'playing' | 'revealed' | 'finished';
 type GameMode = 'classic' | 'map';
@@ -106,7 +125,48 @@ export default function App() {
         behavior: 'smooth'
       });
     }
-  }, [currentImageIndex]);
+
+    // Preload current listing's next images
+    if (currentListing) {
+      const nextImages = currentListing.image_urls.slice(currentImageIndex + 1, currentImageIndex + 4);
+      nextImages.forEach(url => {
+        const img = new Image();
+        img.src = url.replace(/\|/g, '%7C');
+      });
+    }
+
+    // Preload next listing's first image in classic mode
+    if (gameMode === 'classic' && currentIndex < sessionListings.length - 1) {
+      const nextListing = sessionListings[currentIndex + 1];
+      if (nextListing && nextListing.image_urls.length > 0) {
+        const img = new Image();
+        img.src = nextListing.image_urls[0].replace(/\|/g, '%7C');
+      }
+    }
+  }, [currentImageIndex, currentListing, currentIndex, gameMode, sessionListings]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if (currentListing && currentListing.image_urls.length > 1) {
+        if (e.key === 'ArrowLeft') {
+          setCurrentImageIndex(prev => (prev - 1 + currentListing.image_urls.length) % currentListing.image_urls.length);
+        } else if (e.key === 'ArrowRight') {
+          setCurrentImageIndex(prev => (prev + 1) % currentListing.image_urls.length);
+        }
+      }
+
+      if (e.key === 'Escape' && isFullScreen) {
+        setIsFullScreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentListing, isFullScreen]);
 
   const handleGuess = () => {
     if (!guess || isNaN(Number(guess)) || !currentListing) return;
@@ -287,20 +347,23 @@ export default function App() {
     <div className="h-screen w-full bg-zinc-950 text-zinc-100 flex flex-col font-sans select-none overflow-x-hidden">
       {/* --- Header --- */}
       <header className="h-16 shrink-0 border-b border-zinc-800 flex items-center justify-between px-8 bg-zinc-950 z-30">
-        <div className="flex items-center gap-3">
+        <button 
+          onClick={restartGame}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer group text-left"
+        >
           <div className="relative flex items-center justify-center">
-            <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:border-cz-blue transition-colors">
               <Home className="w-4 h-4 text-cz-blue" />
             </div>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-cz-red flex items-center justify-center border-2 border-zinc-950">
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-cz-red flex items-center justify-center border-2 border-zinc-950 shadow-sm">
               <Target className="w-2 h-2 text-white" />
             </div>
           </div>
           <div className="flex flex-col -gap-1">
-            <span className="text-[15px] font-black tracking-tighter uppercase leading-none">Cenová Trefa</span>
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Realitní Hra</span>
+            <span className="text-[15px] font-black tracking-tighter uppercase leading-none text-white group-hover:text-cz-blue transition-colors">Cenová Trefa</span>
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em] group-hover:text-zinc-400 transition-colors">Realitní Hra</span>
           </div>
-        </div>
+        </button>
         
         <div className="flex items-center gap-8">
           <button 
@@ -356,14 +419,22 @@ export default function App() {
                 </div>
                 <div className="flex-1 bg-zinc-800 relative">
                   {(currentListing.coordinates?.lat && currentListing.coordinates?.lng) ? (
-                    <iframe
-                      title="Property Map"
-                      width="100%"
-                      height="100%"
-                      style={{ border: 0 }}
-                      src={`https://www.google.com/maps?q=${currentListing.coordinates.lat},${currentListing.coordinates.lng}&z=16&output=embed`}
-                      allowFullScreen
-                    />
+                    <MapContainer 
+                      center={[currentListing.coordinates.lat, currentListing.coordinates.lng]} 
+                      zoom={15} 
+                      style={{ height: '100%', width: '100%' }}
+                      scrollWheelZoom={true}
+                    >
+                      <TileLayer
+                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                        attribution='&copy; CARTO'
+                      />
+                      <Marker position={[currentListing.coordinates.lat, currentListing.coordinates.lng]}>
+                        <Popup>
+                          <div className="text-zinc-900 font-bold">{currentListing.locality}</div>
+                        </Popup>
+                      </Marker>
+                    </MapContainer>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 gap-4 bg-zinc-900">
                       <MapPin className="w-12 h-12 opacity-20" />
@@ -470,6 +541,7 @@ export default function App() {
                 zoom={7} 
                 style={{ height: '100%', width: '100%' }}
                 className="z-0"
+                scrollWheelZoom={true}
               >
                 <TileLayer
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -555,6 +627,8 @@ export default function App() {
                       className="max-w-full max-h-full object-contain"
                       alt="Property"
                       referrerPolicy="no-referrer"
+                      loading="eager"
+                      decoding="async"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
                         if (!target.src.includes('unsplash')) {
@@ -619,6 +693,8 @@ export default function App() {
                         className="w-full h-full object-cover" 
                         alt="" 
                         referrerPolicy="no-referrer"
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           if (!target.src.includes('unsplash')) {
@@ -655,7 +731,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-10">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
                 <div className="bg-zinc-950 p-4 border border-zinc-800 rounded-sm">
                   <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">Plocha</div>
                   <div className="text-lg font-bold text-zinc-100">{currentListing.m2_size} m²</div>
@@ -682,6 +758,29 @@ export default function App() {
                 </div>
               </div>
 
+              {(currentListing.specs.parkovani || currentListing.specs.garaz || currentListing.specs.sklep || currentListing.specs.balkon || currentListing.specs.terasa || currentListing.specs.zahrada) && (
+                <div className="mb-6">
+                  <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Extra vybavení</div>
+                  <div className="flex flex-wrap gap-2">
+                    {currentListing.specs.parkovani && <span className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-300 rounded uppercase tracking-wider">{currentListing.specs.parkovani}</span>}
+                    {currentListing.specs.garaz && <span className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-300 rounded uppercase tracking-wider">Garáž: {currentListing.specs.garaz}</span>}
+                    {currentListing.specs.sklep && <span className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-300 rounded uppercase tracking-wider">Sklep: {currentListing.specs.sklep}</span>}
+                    {currentListing.specs.balkon && <span className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-300 rounded uppercase tracking-wider">Balkón: {currentListing.specs.balkon}</span>}
+                    {currentListing.specs.terasa && <span className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-300 rounded uppercase tracking-wider">Terasa: {currentListing.specs.terasa}</span>}
+                    {currentListing.specs.zahrada && <span className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-300 rounded uppercase tracking-wider">Zahrada: {currentListing.specs.zahrada}</span>}
+                  </div>
+                </div>
+              )}
+
+              {currentListing.description && (
+                <div className="mb-6">
+                  <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-2">Popis nemovitosti</div>
+                  <div className="text-xs text-zinc-400 leading-relaxed line-clamp-3 hover:line-clamp-none transition-all cursor-pointer bg-zinc-950/50 p-3 rounded border border-zinc-800/50">
+                    {currentListing.description}
+                  </div>
+                </div>
+              )}
+
               {/* Interaction Area / Guess Container */}
               <div className="mt-auto pt-8">
                 <AnimatePresence mode="wait">
@@ -700,7 +799,7 @@ export default function App() {
                           autoFocus
                           placeholder="0"
                           className="w-full bg-zinc-950 border-2 border-zinc-800 rounded-lg py-5 px-6 text-3xl font-bold transition-all outline-none focus:border-cz-blue"
-                          value={guess}
+                          value={guess.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
                           onChange={(e) => {
                             const val = e.target.value.replace(/\s/g, '').replace(/,/g, '.');
                             if (/^\d*\.?\d*$/.test(val)) setGuess(val);
