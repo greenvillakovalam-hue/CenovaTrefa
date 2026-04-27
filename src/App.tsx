@@ -99,10 +99,11 @@ export default function App() {
   const listings = useMemo(() => {
     const all = (listingsData as Listing[]).map(listing => ({
       ...listing,
-      image_urls: listing.image_urls.slice(1)
+      image_urls: listing.image_urls || []
     }));
-    // Randomize listings
-    return all.sort(() => Math.random() - 0.5);
+    // Filter out any properties that might have escaped the scraper check (sanity check)
+    // and those with price 1 or 0
+    return all.filter(l => l.price_czk > 1000 && l.image_urls.length > 0).sort(() => Math.random() - 0.5);
   }, []);
 
   const sessionListings = useMemo(() => {
@@ -131,7 +132,7 @@ export default function App() {
       const nextImages = currentListing.image_urls.slice(currentImageIndex + 1, currentImageIndex + 4);
       nextImages.forEach(url => {
         const img = new Image();
-        img.src = url.replace(/\|/g, '%7C');
+        img.src = url;
       });
     }
 
@@ -140,7 +141,7 @@ export default function App() {
       const nextListing = sessionListings[currentIndex + 1];
       if (nextListing && nextListing.image_urls.length > 0) {
         const img = new Image();
-        img.src = nextListing.image_urls[0].replace(/\|/g, '%7C');
+        img.src = nextListing.image_urls[0];
       }
     }
   }, [currentImageIndex, currentListing, currentIndex, gameMode, sessionListings]);
@@ -470,20 +471,18 @@ export default function App() {
               </div>
 
               <div className="flex-1 min-h-0 relative flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <motion.img
-                  key={currentImageIndex}
-                  src={currentListing.image_urls[currentImageIndex].replace(/\|/g, '%7C')}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="max-w-full max-h-full object-contain shadow-2xl"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (!target.src.includes('unsplash')) {
-                      target.src = "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1000";
-                    }
-                  }}
-                />
+                  <motion.img
+                    key={currentImageIndex}
+                    src={currentListing.image_urls[currentImageIndex]}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="max-w-full max-h-full object-contain shadow-2xl"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
 
                 {currentListing.image_urls.length > 1 && (
                   <>
@@ -514,15 +513,13 @@ export default function App() {
                     )}
                   >
                     <img 
-                      src={url.replace(/\|/g, '%7C')} 
+                      src={url} 
                       className="w-full h-full object-cover" 
                       alt="" 
                       referrerPolicy="no-referrer"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        if (!target.src.includes('unsplash')) {
-                          target.src = "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1000";
-                        }
+                        target.style.display = 'none';
                       }}
                     />
                   </button>
@@ -617,8 +614,8 @@ export default function App() {
                     <motion.img
                       key={`${currentIndex}-${currentImageIndex}`}
                       src={(currentListing?.image_urls && currentListing.image_urls.length > currentImageIndex)
-                        ? currentListing.image_urls[currentImageIndex].replace(/\|/g, '%7C')
-                        : "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1000"
+                        ? currentListing.image_urls[currentImageIndex]
+                        : ""
                       }
                       initial={{ opacity: 0, scale: 1.02 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -631,9 +628,10 @@ export default function App() {
                       decoding="async"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        if (!target.src.includes('unsplash')) {
-                          target.src = "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1000";
-                        }
+                        console.log('Image failed to load:', target.src);
+                        // If it's the first image failing, it might be due to referrer or encoding
+                        // We already have no-referrer and replace (| -> %7C)
+                        target.style.display = 'none';
                       }}
                     />
                   </AnimatePresence>
@@ -688,20 +686,18 @@ export default function App() {
                         currentImageIndex === idx ? "border-cz-blue border-2 scale-[1.02] z-10" : "border-zinc-800 opacity-50 hover:opacity-100"
                       )}
                     >
-                      <img 
-                        src={url.replace(/\|/g, '%7C')} 
-                        className="w-full h-full object-cover" 
-                        alt="" 
-                        referrerPolicy="no-referrer"
-                        loading="lazy"
-                        decoding="async"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          if (!target.src.includes('unsplash')) {
-                            target.src = "https://images.unsplash.com/photo-1518780664697-55e3ad937233?auto=format&fit=crop&q=80&w=1000";
-                          }
-                        }}
-                      />
+                    <img 
+                      src={url} 
+                      className="w-full h-full object-cover" 
+                      alt="" 
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      decoding="async"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
                     </button>
                   ))}
                 </div>
